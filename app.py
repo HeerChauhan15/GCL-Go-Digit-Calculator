@@ -16,38 +16,43 @@ st.markdown("Select plan details below")
 GST_RATE = 0.18
 
 # ============================================
+# AGE LIMITS (ALL SEGMENTS)
+# ============================================
+AGE_MIN = 18
+AGE_MAX = 60
+
+# ============================================
 # FILE MAP: (Segment, Type of Cover) -> filename
 # ============================================
 FILE_MAP = {
-    ("Home Loan", "Level"):              "Home Loan Level.xlsx",
-    ("Home Loan", "Reducing"):           "Home Loan Reducing.xlsx",
-    ("Loan Against Property", "Level"):     "LAP Level.xlsx",
-    ("Loan Against Property", "Reducing"):  "LAP Reducing.xlsx",
-    ("Micro Loan", "Level"):             "Micro Loan Level.xlsx",
-    ("Micro Loan", "Reducing"):          "Micro Loan Reducing.xlsx",
-    ("Personal Loan", "Level"):          "Personal Loan Level.xlsx",
-    ("Personal Loan", "Reducing"):       "Personal Loan Reducing.xlsx",
-    ("Secured Loan", "Level"):           "Secured Loan Business Level.xlsx",
-    ("Secured Loan", "Reducing"):        "Secured Loan Business Reducing.xlsx",
-    ("Unsecured Loan", "Level"):         "Unsecured Loan Business Level.xlsx",
-    ("Unsecured Loan", "Reducing"):      "Unsecured Loan Business Reducing.xlsx",
+    ("Home Loan", "Level"): "Home Loan Level.xlsx",
+    ("Home Loan", "Reducing"): "Home Loan Reducing.xlsx",
+    ("Loan Against Property", "Level"): "LAP Level.xlsx",
+    ("Loan Against Property", "Reducing"): "LAP Reducing.xlsx",
+    ("Micro Loan", "Level"): "Micro Loan Level.xlsx",
+    ("Micro Loan", "Reducing"): "Micro Loan Reducing.xlsx",
+    ("Personal Loan", "Level"): "Personal Loan Level.xlsx",
+    ("Personal Loan", "Reducing"): "Personal Loan Reducing.xlsx",
+    ("Secured Loan", "Level"): "Secured Loan Business Level.xlsx",
+    ("Secured Loan", "Reducing"): "Secured Loan Business Reducing.xlsx",
+    ("Unsecured Loan", "Level"): "Unsecured Loan Business Level.xlsx",
+    ("Unsecured Loan", "Reducing"): "Unsecured Loan Business Reducing.xlsx",
 }
 
 # ============================================
 # SUM ASSURED & TENURE LIMITS PER SEGMENT
 # ============================================
 SEGMENT_LIMITS = {
-    "Home Loan":              {"sa_min": 500000,  "sa_max": 6000000, "t_min": 5, "t_max": 25},
-    "Loan Against Property":  {"sa_min": 100000,  "sa_max": 4000000, "t_min": 1, "t_max": 10},
-    "Micro Loan":             {"sa_min": 10000,   "sa_max": 200000,  "t_min": 1, "t_max": 3},
-    "Personal Loan":          {"sa_min": 100000,  "sa_max": 1500000, "t_min": 1, "t_max": 10},
-    "Secured Loan":           {"sa_min": 100000,  "sa_max": 1000000, "t_min": 1, "t_max": 10},
-    "Unsecured Loan":         {"sa_min": 100000,  "sa_max": 1500000, "t_min": 1, "t_max": 10},
+    "Home Loan": {"sa_min": 500000, "sa_max": 6000000, "t_min": 5, "t_max": 25},
+    "Loan Against Property": {"sa_min": 100000, "sa_max": 4000000, "t_min": 1, "t_max": 10},
+    "Micro Loan": {"sa_min": 10000, "sa_max": 200000, "t_min": 1, "t_max": 3},
+    "Personal Loan": {"sa_min": 100000, "sa_max": 1500000, "t_min": 1, "t_max": 10},
+    "Secured Loan": {"sa_min": 100000, "sa_max": 1000000, "t_min": 1, "t_max": 10},
+    "Unsecured Loan": {"sa_min": 100000, "sa_max": 1500000, "t_min": 1, "t_max": 10},
 }
 
 SEGMENT_OPTIONS = list(SEGMENT_LIMITS.keys())
 COVER_OPTIONS = ["Level", "Reducing"]
-
 
 # ============================================
 # RATE TABLE LOADER
@@ -128,7 +133,7 @@ def find_column(df, target):
 def find_flexible_column(df, keywords):
     """Flexible detection — matches if any keyword (normalized) appears in the column name."""
     for col in df.columns:
-        norm = re.sub(r'[\s_\-]+', '', str(col).lower())
+        norm = re.sub(r'[\s_-]+', '', str(col).lower())
         for kw in keywords:
             if kw in norm:
                 return col
@@ -138,7 +143,6 @@ def find_flexible_column(df, keywords):
 # ============================================
 # DROPDOWNS
 # ============================================
-
 col1, col2 = st.columns(2)
 with col1:
     segment = st.selectbox("Segment", SEGMENT_OPTIONS)
@@ -162,13 +166,13 @@ sum_assured_input = st.number_input(
 
 if sum_assured_input < sa_min:
     st.warning(
-        f"⚠️ Minimum Sum Assured for **{segment}** is ₹{sa_min:,}. "
+        f"⚠️ Minimum Sum Assured for {segment} is ₹{sa_min:,}. "
         f"Value adjusted to ₹{sa_min:,}."
     )
     sum_assured = sa_min
 elif sum_assured_input > sa_max:
     st.warning(
-        f"⚠️ Maximum Sum Assured for **{segment}** is ₹{sa_max:,}. "
+        f"⚠️ Maximum Sum Assured for {segment} is ₹{sa_max:,}. "
         f"Value adjusted to ₹{sa_max:,}."
     )
     sum_assured = sa_max
@@ -180,12 +184,32 @@ st.divider()
 # ============================================
 # MANUAL SECTION
 # ============================================
-
 st.subheader("🔢 Manual Rate Lookup")
 
 col3, col4 = st.columns(2)
 with col3:
-    age = st.number_input("Enter Age", min_value=18, max_value=65, value=30, step=1)
+    age_input = st.number_input(
+        "Enter Age",
+        min_value=18,
+        value=30,
+        step=1
+    )
+
+    if age_input < AGE_MIN:
+        st.warning(
+            f"⚠️ Minimum Age for all segments is **{AGE_MIN} years**. "
+            f"Value adjusted to **{AGE_MIN} years**."
+        )
+        age = AGE_MIN
+    elif age_input > AGE_MAX:
+        st.warning(
+            f"⚠️ Maximum Age for all segments is **{AGE_MAX} years**. "
+            f"Value adjusted to **{AGE_MAX} years**."
+        )
+        age = AGE_MAX
+    else:
+        age = age_input
+
 with col4:
     tenure_input = st.number_input(
         "Enter Tenure",
@@ -195,13 +219,13 @@ with col4:
     )
     if tenure_input < min_tenure:
         st.warning(
-            f"⚠️ Minimum Tenure for **{segment}** is {min_tenure} yrs. "
+            f"⚠️ Minimum Tenure for {segment} is {min_tenure} yrs. "
             f"Value adjusted to {min_tenure} yrs."
         )
         tenure = min_tenure
     elif tenure_input > max_tenure:
         st.warning(
-            f"⚠️ Maximum Tenure for **{segment}** is {max_tenure} yrs. "
+            f"⚠️ Maximum Tenure for {segment} is {max_tenure} yrs. "
             f"Value adjusted to {max_tenure} yrs."
         )
         tenure = max_tenure
@@ -234,15 +258,14 @@ st.divider()
 # ============================================
 # EXCEL UPLOAD SECTION
 # ============================================
-
 st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 st.markdown(
-    "Your Excel must have at least: **Sum Assured**, **Age**, **Tenure** (in years). "
+    "Your Excel must have at least: Sum Assured, Age, Tenure (in years). "
     "Any other columns you include will be carried through to the output unchanged."
 )
 
-st.warning("⚠️ Please make sure you have selected **Segment** and **Type of Cover** above before uploading your Excel file.")
+st.warning("⚠️ Please make sure you have selected Segment and Type of Cover above before uploading your Excel file.")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -285,6 +308,15 @@ if uploaded_file is not None:
 
         df[age_col] = df[age_col].round(0).astype('Int64')
 
+        # ---- AGE VALIDATION (18-60) — NO CLIPPING, ROWS ARE LEFT BLANK ----
+        age_invalid_mask = (df[age_col] < AGE_MIN) | (df[age_col] > AGE_MAX) | df[age_col].isna()
+        age_invalid_count = int(age_invalid_mask.sum())
+        if age_invalid_count > 0:
+            st.warning(
+                f"⚠️ {age_invalid_count} row(s) have Age outside the allowed range "
+                f"({AGE_MIN}-{AGE_MAX} years). Premiums will not be calculated for these rows."
+            )
+
         tenure_out_of_range = ((df[tenure_col] < min_tenure) | (df[tenure_col] > max_tenure)).sum()
         if tenure_out_of_range > 0:
             st.warning(
@@ -305,15 +337,28 @@ if uploaded_file is not None:
         net_list, gst_list, gross_list, status_list = [], [], [], []
         for idx, row in df.iterrows():
             try:
-                r_age = int(row[age_col])
+                r_age_raw = row[age_col]
+
+                # Blank out rows with missing / out-of-range age
+                if pd.isna(r_age_raw) or r_age_raw < AGE_MIN or r_age_raw > AGE_MAX:
+                    net_list.append(None)
+                    gst_list.append(None)
+                    gross_list.append(None)
+                    status_list.append(f"❌ Age must be between {AGE_MIN} and {AGE_MAX}")
+                    continue
+
+                r_age = int(r_age_raw)
                 r_tenure = int(row[tenure_col])
                 r_sa = float(row[sa_col])
+
                 rate = get_rate(df_rates, tenure_map, r_age, r_tenure)
                 net_p, gst_a, gross_p = compute_premium_breakup(rate, r_sa)
+
                 net_list.append(net_p)
                 gst_list.append(gst_a)
                 gross_list.append(gross_p)
                 status_list.append("✅")
+
             except Exception as e:
                 net_list.append(None)
                 gst_list.append(None)
