@@ -93,12 +93,17 @@ def load_rate_table(segment, cover_type):
     return df, tenure_map
 
 
-def get_rate(df, tenure_map, age, tenure):
+def get_rate(df, tenure_map, age, tenure_years):
+    """User enters tenure in YEARS, but the rate table's columns are in MONTHS.
+    Convert years -> months before looking up the column."""
     if age not in df.index:
         raise ValueError(f"Age {age} not found in rate table.")
-    if tenure not in tenure_map:
-        raise ValueError(f"Tenure {tenure} yrs not found in rate table.")
-    return float(df.loc[age, tenure_map[tenure]])
+    tenure_months = int(round(tenure_years * 12))
+    if tenure_months not in tenure_map:
+        raise ValueError(
+            f"Tenure {tenure_years} yrs ({tenure_months} months) not found in rate table."
+        )
+    return float(df.loc[age, tenure_map[tenure_months]])
 
 
 def compute_premium_breakup(rate, sum_assured):
