@@ -317,13 +317,14 @@ if uploaded_file is not None:
                 f"({AGE_MIN}-{AGE_MAX} years). Premiums will not be calculated for these rows."
             )
 
-        tenure_out_of_range = ((df[tenure_col] < min_tenure) | (df[tenure_col] > max_tenure)).sum()
-        if tenure_out_of_range > 0:
+        # ---- TENURE VALIDATION — NO CLIPPING, ROWS ARE LEFT BLANK ----
+        tenure_invalid_mask = (df[tenure_col] < min_tenure) | (df[tenure_col] > max_tenure) | df[tenure_col].isna()
+        tenure_invalid_count = int(tenure_invalid_mask.sum())
+        if tenure_invalid_count > 0:
             st.warning(
-                f"⚠️ {tenure_out_of_range} row(s) had Tenure outside the allowed range "
-                f"({min_tenure}-{max_tenure} yrs for {segment}) and were adjusted to the nearest limit."
+                f"⚠️ {tenure_invalid_count} row(s) have Tenure outside the allowed range "
+                f"({min_tenure}-{max_tenure} yrs for {segment}). Premiums will not be calculated for these rows."
             )
-        df[tenure_col] = df[tenure_col].clip(lower=min_tenure, upper=max_tenure)
 
         df[sa_col] = df[sa_col].fillna(sum_assured)
         sa_out_of_range = ((df[sa_col] < sa_min) | (df[sa_col] > sa_max)).sum()
@@ -338,6 +339,7 @@ if uploaded_file is not None:
         for idx, row in df.iterrows():
             try:
                 r_age_raw = row[age_col]
+                r_tenure_raw = row[tenure_col]
 
                 # Blank out rows with missing / out-of-range age
                 if pd.isna(r_age_raw) or r_age_raw < AGE_MIN or r_age_raw > AGE_MAX:
@@ -347,8 +349,16 @@ if uploaded_file is not None:
                     status_list.append(f"❌ Age must be between {AGE_MIN} and {AGE_MAX}")
                     continue
 
+                # Blank out rows with missing / out-of-range tenure
+                if pd.isna(r_tenure_raw) or r_tenure_raw < min_tenure or r_tenure_raw > max_tenure:
+                    net_list.append(None)
+                    gst_list.append(None)
+                    gross_list.append(None)
+                    status_list.append(f"❌ Tenure must be between {min_tenure} and {max_tenure} yrs")
+                    continue
+
                 r_age = int(r_age_raw)
-                r_tenure = int(row[tenure_col])
+                r_tenure = int(r_tenure_raw)
                 r_sa = float(row[sa_col])
 
                 rate = get_rate(df_rates, tenure_map, r_age, r_tenure)
