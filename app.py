@@ -152,14 +152,28 @@ min_tenure, max_tenure = limits["t_min"], limits["t_max"]
 # ============================================
 # SUM ASSURED (mandatory)
 # ============================================
-sum_assured = st.number_input(
+sum_assured_input = st.number_input(
     "Select Sum Assured (₹)",
-    min_value=sa_min,
-    max_value=sa_max,
+    min_value=0,
     value=sa_min,
     step=10000,
     help=f"For {segment}, Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}."
 )
+
+if sum_assured_input < sa_min:
+    st.warning(
+        f"⚠️ Minimum Sum Assured for **{segment}** is ₹{sa_min:,}. "
+        f"Value adjusted to ₹{sa_min:,}."
+    )
+    sum_assured = sa_min
+elif sum_assured_input > sa_max:
+    st.warning(
+        f"⚠️ Maximum Sum Assured for **{segment}** is ₹{sa_max:,}. "
+        f"Value adjusted to ₹{sa_max:,}."
+    )
+    sum_assured = sa_max
+else:
+    sum_assured = sum_assured_input
 
 st.divider()
 
@@ -173,13 +187,26 @@ col3, col4 = st.columns(2)
 with col3:
     age = st.number_input("Enter Age", min_value=18, max_value=65, value=30, step=1)
 with col4:
-    tenure = st.number_input(
+    tenure_input = st.number_input(
         "Enter Tenure",
-        min_value=min_tenure,
-        max_value=max_tenure,
+        min_value=0,
         value=min_tenure,
         step=1
     )
+    if tenure_input < min_tenure:
+        st.warning(
+            f"⚠️ Minimum Tenure for **{segment}** is {min_tenure} yrs. "
+            f"Value adjusted to {min_tenure} yrs."
+        )
+        tenure = min_tenure
+    elif tenure_input > max_tenure:
+        st.warning(
+            f"⚠️ Maximum Tenure for **{segment}** is {max_tenure} yrs. "
+            f"Value adjusted to {max_tenure} yrs."
+        )
+        tenure = max_tenure
+    else:
+        tenure = tenure_input
     st.caption("📅 Tenure is in Years")
 
 if st.button("Get Rate", type="primary"):
@@ -259,9 +286,22 @@ if uploaded_file is not None:
             df[tenure_col] = df[tenure_col].round(0).astype('Int64')
 
         df[age_col] = df[age_col].round(0).astype('Int64')
+
+        tenure_out_of_range = ((df[tenure_col] < min_tenure) | (df[tenure_col] > max_tenure)).sum()
+        if tenure_out_of_range > 0:
+            st.warning(
+                f"⚠️ {tenure_out_of_range} row(s) had Tenure outside the allowed range "
+                f"({min_tenure}-{max_tenure} yrs for {segment}) and were adjusted to the nearest limit."
+            )
         df[tenure_col] = df[tenure_col].clip(lower=min_tenure, upper=max_tenure)
 
         df[sa_col] = df[sa_col].fillna(sum_assured)
+        sa_out_of_range = ((df[sa_col] < sa_min) | (df[sa_col] > sa_max)).sum()
+        if sa_out_of_range > 0:
+            st.warning(
+                f"⚠️ {sa_out_of_range} row(s) had Sum Assured outside the allowed range "
+                f"(₹{sa_min:,}-₹{sa_max:,} for {segment}) and were adjusted to the nearest limit."
+            )
         df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
 
         net_list, gst_list, gross_list, status_list = [], [], [], []
