@@ -184,8 +184,6 @@ st.divider()
 # ============================================
 # MANUAL SECTION
 # ============================================
-st.subheader("🔢 Manual Rate Lookup")
-
 col3, col4 = st.columns(2)
 with col3:
     age_input = st.number_input(
@@ -233,7 +231,8 @@ with col4:
         tenure = tenure_input
     st.caption("📅 Tenure is in Years")
 
-if st.button("Get Rate", type="primary"):
+st.write("")
+if st.button("Get Rate", type="primary", use_container_width=True):
     try:
         df_rates, tenure_map = load_rate_table(segment, cover_type)
         rate = get_rate(df_rates, tenure_map, age, tenure)
