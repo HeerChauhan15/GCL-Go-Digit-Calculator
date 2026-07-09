@@ -219,9 +219,7 @@ if st.button("Get Rate", type="primary"):
             f"✅ {segment} | {cover_type} | Age {age} | Tenure {tenure} yrs | "
             f"Sum Assured ₹{sum_assured:,}"
         )
-        col_a, col_b, col_c, col_d = st.columns(4)
-        with col_a:
-            st.metric("Rate (per ₹1,00,000)", f"₹ {rate:,.2f}")
+        col_b, col_c, col_d = st.columns(3)
         with col_b:
             st.metric("Net Premium (excl. GST)", f"₹ {net_premium:,.2f}")
         with col_c:
