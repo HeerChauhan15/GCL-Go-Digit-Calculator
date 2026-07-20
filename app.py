@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("💰 GCL Go Digit Calculator")
 st.markdown("Select plan details below")
 
-GST_RATE = 0.18
+GST_PCT = 18.0  # fixed, not user-editable
 
 # ============================================
 # AGE LIMITS (ALL SEGMENTS)
@@ -41,6 +41,9 @@ FILE_MAP = {
 
 # ============================================
 # SUM ASSURED & TENURE LIMITS PER SEGMENT
+# (Tenure limits still apply for rate lookup — the rate table only has
+#  columns for these tenures. Sum Assured limits are no longer enforced;
+#  they're kept here only to prefill a sensible default in the input box.)
 # ============================================
 SEGMENT_LIMITS = {
     "Home Loan": {"sa_min": 500000, "sa_max": 6000000, "t_min": 5, "t_max": 25},
@@ -111,13 +114,27 @@ def get_rate(df, tenure_map, age, tenure_years):
     return float(df.loc[age, tenure_map[tenure_months]])
 
 
-def compute_premium_breakup(rate, sum_assured):
-    """Rate table stores GROSS premium rate (per Rs 1,00,000 SA).
-    Returns (net_premium, gst_amount, gross_premium)."""
-    gross_premium = rate * (sum_assured / 100000)
-    net_premium = gross_premium / (1 + GST_RATE)
-    gst_amount = gross_premium - net_premium
-    return round(net_premium, 2), round(gst_amount, 2), round(gross_premium, 2)
+# ============================================
+# SHARED LOADER % + GST PREMIUM FORMULA
+# Used everywhere: manual single entry, manual joint/multi entry, and
+# bulk Excel upload — same base_rate -> premium formula, applied per
+# row/entry individually.
+# ============================================
+def compute_premium(base_rate, sum_assured, loader_pct):
+    """
+    rate_after_loader = base_rate / (1 - loader_pct / 100)
+    final_rate         = rate_after_loader * (1 + GST_PCT / 100)
+    premium            = final_rate * (sum_assured / 100000)
+
+    Rates are per ₹1,00,000 Sum Assured.
+    """
+    loader_pct = loader_pct or 0.0
+    if loader_pct >= 100:
+        raise ValueError("Loader % must be less than 100.")
+    rate_after_loader = base_rate / (1 - loader_pct / 100)
+    final_rate = rate_after_loader * (1 + GST_PCT / 100)
+    premium = final_rate * (sum_assured / 100000)
+    return round(premium, 2)
 
 
 def find_column(df, target):
@@ -154,30 +171,27 @@ sa_min, sa_max = limits["sa_min"], limits["sa_max"]
 min_tenure, max_tenure = limits["t_min"], limits["t_max"]
 
 # ============================================
-# SUM ASSURED (mandatory)
+# SUM ASSURED (mandatory) — entered value is used as-is, never clipped
 # ============================================
-sum_assured_input = st.number_input(
+sum_assured = st.number_input(
     "Select Sum Assured (₹)",
     min_value=0,
     value=sa_min,
     step=10000,
-    help=f"For {segment}, Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}."
+    help=f"Typical range for {segment} is ₹{sa_min:,} - ₹{sa_max:,}, but any value you enter is used as-is."
 )
 
-if sum_assured_input < sa_min:
-    st.warning(
-        f"⚠️ Minimum Sum Assured for {segment} is ₹{sa_min:,}. "
-        f"Value adjusted to ₹{sa_min:,}."
-    )
-    sum_assured = sa_min
-elif sum_assured_input > sa_max:
-    st.warning(
-        f"⚠️ Maximum Sum Assured for {segment} is ₹{sa_max:,}. "
-        f"Value adjusted to ₹{sa_max:,}."
-    )
-    sum_assured = sa_max
-else:
-    sum_assured = sum_assured_input
+# ============================================
+# LOADER % (optional, shared across the whole app)
+# ============================================
+loader_pct = st.number_input(
+    "Loader % (optional)",
+    min_value=0.0,
+    max_value=99.99,
+    value=0.0,
+    step=0.01,
+    help="Leave at 0 if no loader applies. GST (18%) is always applied automatically after the loader."
+)
 
 st.divider()
 
@@ -235,20 +249,14 @@ st.write("")
 if st.button("Get Rate", type="primary", use_container_width=True):
     try:
         df_rates, tenure_map = load_rate_table(segment, cover_type)
-        rate = get_rate(df_rates, tenure_map, age, tenure)
-        net_premium, gst_amount, gross_premium = compute_premium_breakup(rate, sum_assured)
+        base_rate = get_rate(df_rates, tenure_map, age, tenure)
+        premium = compute_premium(base_rate, sum_assured, loader_pct)
 
         st.success(
             f"✅ {segment} | {cover_type} | Age {age} | Tenure {tenure} yrs | "
-            f"Sum Assured ₹{sum_assured:,}"
+            f"Sum Assured ₹{sum_assured:,} | Loader {loader_pct}%"
         )
-        col_b, col_c, col_d = st.columns(3)
-        with col_b:
-            st.metric("Net Premium (excl. GST)", f"₹ {net_premium:,.2f}")
-        with col_c:
-            st.metric("GST (18%)", f"₹ {gst_amount:,.2f}")
-        with col_d:
-            st.metric("Gross Premium", f"₹ {gross_premium:,.2f}")
+        st.metric("Premium", f"₹ {premium:,.2f}")
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -265,6 +273,7 @@ st.markdown(
 )
 
 st.warning("⚠️ Please make sure you have selected Segment and Type of Cover above before uploading your Excel file.")
+st.caption(f"ℹ️ The Loader % entered above ({loader_pct}%) and GST (18%, fixed) will be applied to every row.")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -325,16 +334,10 @@ if uploaded_file is not None:
                 f"({min_tenure}-{max_tenure} yrs for {segment}). Premiums will not be calculated for these rows."
             )
 
+        # ---- SUM ASSURED — used exactly as entered/read, never clipped ----
         df[sa_col] = df[sa_col].fillna(sum_assured)
-        sa_out_of_range = ((df[sa_col] < sa_min) | (df[sa_col] > sa_max)).sum()
-        if sa_out_of_range > 0:
-            st.warning(
-                f"⚠️ {sa_out_of_range} row(s) had Sum Assured outside the allowed range "
-                f"(₹{sa_min:,}-₹{sa_max:,} for {segment}) and were adjusted to the nearest limit."
-            )
-        df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
 
-        net_list, gst_list, gross_list, status_list = [], [], [], []
+        premium_list, status_list = [], []
         for idx, row in df.iterrows():
             try:
                 r_age_raw = row[age_col]
@@ -342,17 +345,13 @@ if uploaded_file is not None:
 
                 # Blank out rows with missing / out-of-range age
                 if pd.isna(r_age_raw) or r_age_raw < AGE_MIN or r_age_raw > AGE_MAX:
-                    net_list.append(None)
-                    gst_list.append(None)
-                    gross_list.append(None)
+                    premium_list.append(None)
                     status_list.append(f"❌ Age must be between {AGE_MIN} and {AGE_MAX}")
                     continue
 
                 # Blank out rows with missing / out-of-range tenure
                 if pd.isna(r_tenure_raw) or r_tenure_raw < min_tenure or r_tenure_raw > max_tenure:
-                    net_list.append(None)
-                    gst_list.append(None)
-                    gross_list.append(None)
+                    premium_list.append(None)
                     status_list.append(f"❌ Tenure must be between {min_tenure} and {max_tenure} yrs")
                     continue
 
@@ -360,49 +359,33 @@ if uploaded_file is not None:
                 r_tenure = int(r_tenure_raw)
                 r_sa = float(row[sa_col])
 
-                rate = get_rate(df_rates, tenure_map, r_age, r_tenure)
-                net_p, gst_a, gross_p = compute_premium_breakup(rate, r_sa)
+                base_rate = get_rate(df_rates, tenure_map, r_age, r_tenure)
+                premium = compute_premium(base_rate, r_sa, loader_pct)
 
-                net_list.append(net_p)
-                gst_list.append(gst_a)
-                gross_list.append(gross_p)
+                premium_list.append(premium)
                 status_list.append("✅")
 
             except Exception as e:
-                net_list.append(None)
-                gst_list.append(None)
-                gross_list.append(None)
+                premium_list.append(None)
                 status_list.append(f"❌ {e}")
 
-        df["Net Premium"] = net_list
-        df["GST Amount"] = gst_list
-        df["Gross Premium"] = gross_list
+        df["Premium"] = premium_list
         df["Status"] = status_list
 
-        core_cols = [sa_col, age_col, tenure_col, "Net Premium", "GST Amount", "Gross Premium", "Status"]
+        core_cols = [sa_col, age_col, tenure_col, "Premium", "Status"]
         extra_cols = [c for c in df.columns if c not in core_cols]
         df_out = df[core_cols + extra_cols]
 
-        total_net = pd.to_numeric(pd.Series(net_list), errors='coerce').sum()
-        total_gst = pd.to_numeric(pd.Series(gst_list), errors='coerce').sum()
-        total_gross = pd.to_numeric(pd.Series(gross_list), errors='coerce').sum()
+        total_premium = pd.to_numeric(pd.Series(premium_list), errors='coerce').sum()
 
-        col_x, col_y, col_z = st.columns(3)
-        with col_x:
-            st.metric("💰 Total Net Premium", f"₹ {total_net:,.2f}")
-        with col_y:
-            st.metric("💰 Total GST", f"₹ {total_gst:,.2f}")
-        with col_z:
-            st.metric("💰 Total Gross Premium", f"₹ {total_gross:,.2f}")
+        st.metric("💰 Total Premium", f"₹ {total_premium:,.2f}")
 
         st.subheader("Rate Lookup Output")
         st.dataframe(df_out, use_container_width=True)
 
         total_row = {c: "" for c in df_out.columns}
         total_row[sa_col] = "TOTAL"
-        total_row["Net Premium"] = round(total_net, 2)
-        total_row["GST Amount"] = round(total_gst, 2)
-        total_row["Gross Premium"] = round(total_gross, 2)
+        total_row["Premium"] = round(total_premium, 2)
         df_final = pd.concat([df_out, pd.DataFrame([total_row])], ignore_index=True)
 
         output_file = "Rate_Output.xlsx"
