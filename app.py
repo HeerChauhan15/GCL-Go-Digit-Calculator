@@ -268,7 +268,9 @@ st.divider()
 st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 st.markdown(
-    "Your Excel must have at least: Sum Assured, Age, Tenure (in years). "
+    "Your Excel must have at least: Age and Tenure (in years). "
+    "For the Sum Assured amount, the app looks for a **Sum Assured** column first; "
+    "if that's not present, it will use a **Loan Outstanding Amount** column instead. "
     "Any other columns you include will be carried through to the output unchanged."
 )
 
@@ -289,10 +291,28 @@ if uploaded_file is not None:
 
         age_col = find_column(df, "Age") or find_flexible_column(df, ["age"])
         tenure_col = find_column(df, "Tenure") or find_flexible_column(df, ["tenure"])
+
+        # ---- SUM ASSURED column detection, with Loan Outstanding Amount fallback ----
         sa_col = (
             find_column(df, "Sum Assured")
-            or find_flexible_column(df, ["sumassured", "suminsured", "loanamount"])
+            or find_flexible_column(df, ["sumassured", "suminsured"])
         )
+        sa_source_label = "Sum Assured"
+
+        if not sa_col:
+            # Fall back to Loan Outstanding Amount if no Sum Assured column found
+            sa_col = (
+                find_column(df, "Loan Outstanding Amount")
+                or find_flexible_column(
+                    df,
+                    ["loanoutstandingamount", "loanoutstanding", "outstandingloanamount",
+                     "outstandingamount", "loanamount"]
+                )
+            )
+            sa_source_label = "Loan Outstanding Amount"
+
+        if sa_col:
+            st.info(f"ℹ️ Using column **'{sa_col}'** ({sa_source_label}) as the Sum Assured basis for premium calculation.")
 
         missing = []
         if not age_col:
@@ -300,7 +320,7 @@ if uploaded_file is not None:
         if not tenure_col:
             missing.append("Tenure")
         if not sa_col:
-            missing.append("Sum Assured")
+            missing.append("Sum Assured (or Loan Outstanding Amount)")
         if missing:
             raise ValueError("Excel must contain mandatory columns: " + ", ".join(missing))
 
@@ -334,7 +354,14 @@ if uploaded_file is not None:
                 f"({min_tenure}-{max_tenure} yrs for {segment}). Premiums will not be calculated for these rows."
             )
 
-        # ---- SUM ASSURED — used exactly as entered/read, never clipped ----
+        # ---- SUM ASSURED / LOAN OUTSTANDING — used exactly as entered/read, never clipped ----
+        # Only missing values fall back to the manually entered Sum Assured above.
+        sa_missing_count = int(df[sa_col].isna().sum())
+        if sa_missing_count > 0:
+            st.info(
+                f"ℹ️ {sa_missing_count} row(s) had a blank '{sa_col}' value — "
+                f"using the manually entered Sum Assured (₹{sum_assured:,}) for those rows."
+            )
         df[sa_col] = df[sa_col].fillna(sum_assured)
 
         premium_list, status_list = [], []
